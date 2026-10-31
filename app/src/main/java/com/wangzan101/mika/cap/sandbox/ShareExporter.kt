@@ -1,12 +1,16 @@
 package com.wangzan101.mika.cap.sandbox
 
+import android.Manifest
+import android.annotation.TargetApi
 import android.content.ContentResolver
 import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
 import android.provider.MediaStore
 import android.webkit.MimeTypeMap
 import com.wangzan101.mika.chat.SharedFile
@@ -17,6 +21,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.io.InputStream
 
 class FileTooLarge(val bytes: Long) : Exception("file is larger than ${ShareRules.MAX_BYTES shr 20} MB")
@@ -38,7 +43,11 @@ class ShareExporter(private val context: Context) {
         copyOut(file.input(), name)
     }
 
-    private suspend fun copyOut(input: InputStream, name: String): SharedFile {
+    private suspend fun copyOut(input: InputStream, name: String): SharedFile =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) copyOutMediaStore(input, name) else copyOutLegacy(input, name)
+
+    @TargetApi(Build.VERSION_CODES.Q)
+    private suspend fun copyOutMediaStore(input: InputStream, name: String): SharedFile {
         val resolver = context.contentResolver
         val values = ContentValues().apply {
             put(MediaStore.Downloads.DISPLAY_NAME, name)
@@ -72,10 +81,69 @@ class ShareExporter(private val context: Context) {
         return SharedFile(actual, size, "Download/Mika/$actual", uri.toString())
     }
 
+    /** 安卓 9 没有「下载」媒体库。写到公共下载目录,再登记进 MediaStore,好用内容地址打开。 */
+    @Suppress("DEPRECATION")
+    private suspend fun copyOutLegacy(input: InputStream, name: String): SharedFile {
+        if (context.checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+            throw SandboxError("storage_permission", "Saving files on Android 9 needs storage permission.", recoverable = true)
+        }
+        val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "Mika")
+        if (!dir.mkdirs() && !dir.isDirectory) throw IllegalStateException("cannot create Download/Mika")
+        val dest = uniqueFile(dir, name)
+        val tmp = File(dir, dest.name + ".partial")
+        var size = 0L
+        try {
+            tmp.outputStream().use { out ->
+                val buf = ByteArray(64 * 1024)
+                while (true) {
+                    currentCoroutineContext().ensureActive()
+                    val n = input.read(buf)
+                    if (n < 0) break
+                    size += n
+                    if (size > ShareRules.MAX_BYTES) throw FileTooLarge(size)
+                    out.write(buf, 0, n)
+                }
+            }
+            currentCoroutineContext().ensureActive()
+            if (!tmp.renameTo(dest)) throw IllegalStateException("cannot finish Download/Mika/${dest.name}")
+        } catch (e: Throwable) {
+            tmp.delete()
+            throw e
+        }
+        val values = ContentValues().apply {
+            put(MediaStore.MediaColumns.DATA, dest.absolutePath)
+            put(MediaStore.MediaColumns.DISPLAY_NAME, dest.name)
+            mimeOf(dest.name)?.let { put(MediaStore.MediaColumns.MIME_TYPE, it) }
+        }
+        val uri = runCatching {
+            context.contentResolver.insert(MediaStore.Files.getContentUri("external"), values)
+        }.getOrNull() ?: Uri.fromFile(dest)
+        return SharedFile(dest.name, size, "Download/Mika/${dest.name}", uri.toString())
+    }
+
+    private fun uniqueFile(dir: File, name: String): File {
+        val dot = name.lastIndexOf('.')
+        val base = if (dot > 0) name.substring(0, dot) else name
+        val ext = if (dot > 0) name.substring(dot) else ""
+        var dest = File(dir, name)
+        var i = 1
+        while (dest.exists()) {
+            dest = File(dir, "$base ($i)$ext")
+            i++
+        }
+        return dest
+    }
+
     /**
      * 删掉本 App 在「下载/Mika」里留下的、没写完的条目(写到一半进程被杀会留下 IS_PENDING 的空壳)。启动时调用。
      */
     fun cleanPending() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            @Suppress("DEPRECATION")
+            val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "Mika")
+            dir.listFiles { f -> f.name.endsWith(".partial") }?.forEach { it.delete() }
+            return
+        }
         val resolver = context.contentResolver
         val args = Bundle().apply {
             putString(ContentResolver.QUERY_ARG_SQL_SELECTION,

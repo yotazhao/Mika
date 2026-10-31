@@ -134,7 +134,8 @@ class OverlayHost internal constructor(private val service: ScreenAccessibility)
     private fun legacyArea(): OverlayArea {
         val display = wm().defaultDisplay
         val metrics = DisplayMetrics().also(display::getRealMetrics)
-        val cutout = display.cutout
+        // Display.getCutout 从安卓 10 才有。安卓 9 只按状态栏、导航栏高度让开。
+        val cutout = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) display.cutout else null
         val fallback = (FALLBACK_INSET_DP * service.resources.displayMetrics.density).toInt()
         val top = maxOf(cutout?.safeInsetTop ?: 0, systemBarPx("status_bar_height", fallback))
         val bottom = maxOf(cutout?.safeInsetBottom ?: 0, systemBarPx("navigation_bar_height", fallback))
@@ -253,7 +254,13 @@ class OverlayWindow internal constructor(
         try {
             withTimeoutOrNull(GONE_WAIT_MS) {
                 suspendCancellableCoroutine { cont ->
-                    frame.viewTreeObserver.registerFrameCommitCallback { if (cont.isActive) cont.resume(Unit) }
+                    val done = { if (cont.isActive) cont.resume(Unit) }
+                    // 等这一帧真正画完从安卓 10 才有;安卓 9 等到下一帧开始,再多等下面那几帧。
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        frame.viewTreeObserver.registerFrameCommitCallback(done)
+                    } else {
+                        Choreographer.getInstance().postFrameCallback { done() }
+                    }
                     frame.invalidate()
                 }
             }

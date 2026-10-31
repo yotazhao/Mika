@@ -15,9 +15,9 @@ android {
 
     defaultConfig {
         applicationId = "com.wangzan101.mika"
-        // 安卓 10（API 29）。鸿蒙 2.0（如华为 Y9 2019）底层是安卓 10；高于它的 minSdk 会被系统安装器拒掉，
-        // 界面显示「解析包时出现问题」。手机操作仍要安卓 13，见 Prerequisites.MIN_SDK。
-        minSdk = 29
+        // 安卓 9（API 28）。Y9 2019（JKM-AL00b）出厂是安卓 8.1，最后的 EMUI 9.1 / 鸿蒙 2.0 底层是安卓 9（API 28）。
+        // minSdk 高于设备时，华为安装器显示「解析包时出现问题」。手机操作仍要安卓 13，见 Prerequisites.MIN_SDK。
+        minSdk = 28
         targetSdk = 35
         versionCode = 14
         versionName = "0.1.13"
@@ -30,6 +30,16 @@ android {
     // 沙箱程序只有 arm64 版本(jniLibs/arm64-v8a);APK 不限 ABI,别的设备照常安装、显示「此设备不支持沙箱」。
     // 沙箱程序要从 nativeLibraryDir 直接执行,安装时必须解到磁盘
     packaging { jniLibs { useLegacyPackaging = true } }
+
+    // 鸿蒙 2 / EMUI 的安装器认不出只有 v2 签名的包，会报「解析包时出现问题」。v1+v2 才能装上；不要 v3。
+    signingConfigs {
+        getByName("debug") {
+            enableV1Signing = true
+            enableV2Signing = true
+            enableV3Signing = false
+            enableV4Signing = false
+        }
+    }
     // 自带的运行环境(assets/runtime/rootfs.tar.xz,tools/sandbox/build-runtime.py 生成)已是 xz,不再压一遍
     androidResources { noCompress += "xz" }
 

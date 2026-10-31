@@ -673,8 +673,12 @@ class ShellService(
         val granted = context.checkPermission(READ_CLIPBOARD_IN_BACKGROUND, Process.myPid(), Process.myUid()) ==
             PackageManager.PERMISSION_GRANTED
         val ops = context.getSystemService(AppOpsManager::class.java)
-        granted && ops.unsafeCheckOpNoThrow(OPSTR_READ_CLIPBOARD, Process.myUid(), ShellContext.SHELL_PACKAGE) ==
-            AppOpsManager.MODE_ALLOWED
+        granted && if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ops.unsafeCheckOpNoThrow(OPSTR_READ_CLIPBOARD, Process.myUid(), ShellContext.SHELL_PACKAGE) ==
+                AppOpsManager.MODE_ALLOWED
+        } else {
+            true
+        }
     }.getOrDefault(false)
 
     private fun suppressOverlay(clip: ClipData): ClipData {

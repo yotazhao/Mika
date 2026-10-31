@@ -112,7 +112,11 @@ object PairingNotifier {
     fun ensureChannel(context: Context): ChannelPlan {
         val nm = context.getSystemService(NotificationManager::class.java)
         val existing = PairingChannel.IDS.mapNotNull { id ->
-            nm.getNotificationChannel(id)?.let { ChannelSnapshot(id, it.importance, it.hasUserSetImportance()) }
+            nm.getNotificationChannel(id)?.let {
+                // 分不出是不是用户自己改的从安卓 10 才有。更早的系统不重建已有频道,免得盖掉用户的设置。
+                val userSet = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) it.hasUserSetImportance() else true
+                ChannelSnapshot(id, it.importance, userSet)
+            }
         }
         val plan = PairingChannel.plan(existing)
         if (plan is ChannelPlan.Create) {

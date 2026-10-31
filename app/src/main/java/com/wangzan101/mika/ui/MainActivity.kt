@@ -71,6 +71,9 @@ class MainActivity : ComponentActivity() {
         monitor.refresh()
     }
 
+    // 安卓 9 把文件存到「下载」「相册」需要这个权限。用户拒绝后系统不再弹,导出时再说明。
+    private val storagePermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
     // 安卓 12 及以前套上 App 里选的语言;13 起系统自己套
     override fun attachBaseContext(newBase: Context) {
         super.attachBaseContext(AppLanguage.wrap(newBase))
@@ -101,6 +104,10 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         monitor.start()
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P &&
+            checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+            storagePermission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        }
         // 每次打开都悄悄查一次新版本(两分钟内连着打开的只查一次),失败不吭声
         (application as MikaApp).updates.autoCheckInBackground()
     }
