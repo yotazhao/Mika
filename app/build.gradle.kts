@@ -15,7 +15,9 @@ android {
 
     defaultConfig {
         applicationId = "com.wangzan101.mika"
-        minSdk = 30
+        // 安卓 10（API 29）。鸿蒙 2.0（如华为 Y9 2019）底层是安卓 10；高于它的 minSdk 会被系统安装器拒掉，
+        // 界面显示「解析包时出现问题」。手机操作仍要安卓 13，见 Prerequisites.MIN_SDK。
+        minSdk = 29
         targetSdk = 35
         versionCode = 14
         versionName = "0.1.13"

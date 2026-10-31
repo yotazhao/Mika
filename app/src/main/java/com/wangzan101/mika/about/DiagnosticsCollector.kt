@@ -89,7 +89,13 @@ object DiagnosticsCollector {
     }
 
     private fun installer(context: Context): String? = runCatching {
-        context.packageManager.getInstallSourceInfo(context.packageName).installingPackageName
+        val pm = context.packageManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            pm.getInstallSourceInfo(context.packageName).installingPackageName
+        } else {
+            @Suppress("DEPRECATION")
+            pm.getInstallerPackageName(context.packageName)
+        }
     }.getOrNull()
 
     private fun language(context: Context): String {

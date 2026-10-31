@@ -87,15 +87,25 @@ open class ScreenAccessibility : AccessibilityService() {
         if (events.subscriptionCount.value == 0) return
         val displayId = displayOf(event)
         if (displayId == Display.INVALID_DISPLAY) return
-        // API 33 以下系统会在回调返回后回收事件对象,订阅方异步读取前先复制一份
-        events.tryEmit(DisplayEvent(displayId, AccessibilityEvent(event)))
+        // API 33 以下系统会在回调返回后回收事件对象,订阅方异步读取前先复制一份。
+        // 复制构造从安卓 11 才有;安卓 10 用 obtain(已弃用,但还在)。
+        val copy = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            AccessibilityEvent(event)
+        } else {
+            @Suppress("DEPRECATION")
+            AccessibilityEvent.obtain(event)
+        }
+        events.tryEmit(DisplayEvent(displayId, copy))
     }
 
     override fun onInterrupt() = Unit
 
-    /** 指定屏上的窗口;该屏没有窗口(或不存在)时为空列表。 */
-    fun windowsOn(displayId: Int): List<AccessibilityWindowInfo> =
-        windowsOnAllDisplays.get(displayId).orEmpty()
+    /** 指定屏上的窗口;该屏没有窗口(或不存在)时为空列表。安卓 11 起才能按屏列窗口,更早只能看到主屏。 */
+    fun windowsOn(displayId: Int): List<AccessibilityWindowInfo> {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) return windowsOnAllDisplays.get(displayId).orEmpty()
+        if (displayId != Display.DEFAULT_DISPLAY) return emptyList()
+        return windows ?: emptyList()
+    }
 
     /** 在指定屏上沿 [path] 做一次单指手势;完成返回 true,被取消或无法下发返回 false。 */
     suspend fun gesture(displayId: Int, path: Path, durationMs: Long): Boolean {
@@ -112,10 +122,12 @@ open class ScreenAccessibility : AccessibilityService() {
     }
 
     private suspend fun dispatch(displayId: Int, strokes: List<GestureDescription.StrokeDescription>): Boolean {
-        val gesture = GestureDescription.Builder()
-            .setDisplayId(displayId)
-            .apply { strokes.forEach(::addStroke) }
-            .build()
+        // 指定屏的手势从安卓 11 才有;更早只能在主屏上做,别的屏直接做不了。
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R && displayId != Display.DEFAULT_DISPLAY) return false
+        val gesture = GestureDescription.Builder().apply {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) setDisplayId(displayId)
+            strokes.forEach(::addStroke)
+        }.build()
         return suspendCancellableCoroutine { cont ->
             val callback = object : GestureResultCallback() {
                 override fun onCompleted(gestureDescription: GestureDescription) {
@@ -142,30 +154,35 @@ open class ScreenAccessibility : AccessibilityService() {
      * 太快时等一秒再截一次。画面是软件位图(可以读像素、编码)。
      */
     suspend fun takeMainScreenshot(): MainShot {
+        // 无障碍截图从安卓 11 才有。手机操作本身要安卓 13,这里只是别在更早的系统上崩。
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return MainShot.Failed(SCREENSHOT_UNSUPPORTED)
         val first = screenshotOnce()
         if (first !is MainShot.Failed || first.code != ERROR_TAKE_SCREENSHOT_INTERVAL_TIME_SHORT) return first
         kotlinx.coroutines.delay(SCREENSHOT_INTERVAL_MS)
         return screenshotOnce()
     }
 
-    private suspend fun screenshotOnce(): MainShot = suspendCancellableCoroutine { cont ->
-        takeScreenshot(Display.DEFAULT_DISPLAY, mainExecutor, object : TakeScreenshotCallback {
-            override fun onSuccess(result: ScreenshotResult) {
-                val shot = runCatching {
-                    result.hardwareBuffer.use { buffer ->
-                        val hw = Bitmap.wrapHardwareBuffer(buffer, result.colorSpace) ?: return@runCatching null
-                        hw.copy(Bitmap.Config.ARGB_8888, false).also { hw.recycle() }
-                    }
-                }.getOrNull()
-                if (cont.isActive) cont.resume(shot?.let(MainShot::Ok) ?: MainShot.Failed(ERROR_TAKE_SCREENSHOT_INTERNAL_ERROR))
-            }
+    private suspend fun screenshotOnce(): MainShot {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return MainShot.Failed(SCREENSHOT_UNSUPPORTED)
+        return suspendCancellableCoroutine { cont ->
+            takeScreenshot(Display.DEFAULT_DISPLAY, mainExecutor, object : TakeScreenshotCallback {
+                override fun onSuccess(result: ScreenshotResult) {
+                    val shot = runCatching {
+                        result.hardwareBuffer.use { buffer ->
+                            val hw = Bitmap.wrapHardwareBuffer(buffer, result.colorSpace) ?: return@runCatching null
+                            hw.copy(Bitmap.Config.ARGB_8888, false).also { hw.recycle() }
+                        }
+                    }.getOrNull()
+                    if (cont.isActive) cont.resume(shot?.let(MainShot::Ok) ?: MainShot.Failed(ERROR_TAKE_SCREENSHOT_INTERNAL_ERROR))
+                }
 
-            override fun onFailure(errorCode: Int) {
-                // 屏上有防截屏窗口:安卓 12 起有专门的错误码;更早的系统截出来是黑的,由调用方看画面判断
-                val secure = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && errorCode == ERROR_TAKE_SCREENSHOT_SECURE_WINDOW
-                if (cont.isActive) cont.resume(if (secure) MainShot.Secure else MainShot.Failed(errorCode))
-            }
-        })
+                override fun onFailure(errorCode: Int) {
+                    // 屏上有防截屏窗口:安卓 12 起有专门的错误码;更早的系统截出来是黑的,由调用方看画面判断
+                    val secure = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && errorCode == ERROR_TAKE_SCREENSHOT_SECURE_WINDOW
+                    if (cont.isActive) cont.resume(if (secure) MainShot.Secure else MainShot.Failed(errorCode))
+                }
+            })
+        }
     }
 
     /**
@@ -188,17 +205,23 @@ open class ScreenAccessibility : AccessibilityService() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) return event.displayId
         val windowId = event.windowId
         if (windowId == -1) return Display.INVALID_DISPLAY
-        val all = windowsOnAllDisplays
-        for (i in 0 until all.size()) {
-            if (all.valueAt(i).any { it.id == windowId }) return all.keyAt(i)
+        // 按屏列窗口从安卓 11 才有。更早只能看主屏上的窗口。
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val all = windowsOnAllDisplays
+            for (i in 0 until all.size()) {
+                if (all.valueAt(i).any { it.id == windowId }) return all.keyAt(i)
+            }
+            return Display.INVALID_DISPLAY
         }
-        return Display.INVALID_DISPLAY
+        return if (windows?.any { it.id == windowId } == true) Display.DEFAULT_DISPLAY else Display.INVALID_DISPLAY
     }
 
     companion object {
         private const val EVENT_BUFFER = 64
         /** 两次截图之间系统要求的间隔(安卓原版是一秒)。 */
         private const val SCREENSHOT_INTERVAL_MS = 1_000L
+        /** 系统还没有无障碍截图(安卓 11 以前)。 */
+        private const val SCREENSHOT_UNSUPPORTED = -1
 
         private val _instance = MutableStateFlow<ScreenAccessibility?>(null)
         /** 已连接的服务实例;服务未开启或已断开时为 null。 */

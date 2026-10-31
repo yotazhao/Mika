@@ -12,7 +12,7 @@ object QrImage {
     private const val FILE_NAME = "mika-author-wechat.jpg"
 
     /**
-     * 存进相册的 Pictures/Mika。经 MediaStore 写自己新建的图片不要存储权限(安卓 10 起如此,Mika 最低支持安卓 11)。
+     * 存进相册的 Pictures/Mika。经 MediaStore 写自己新建的图片不要存储权限(安卓 10 起如此,Mika 最低支持安卓 10)。
      * 写完前标成待定,别的 App 看不到半张图;失败时删掉那一条。
      */
     fun saveToPictures(context: Context): Boolean {

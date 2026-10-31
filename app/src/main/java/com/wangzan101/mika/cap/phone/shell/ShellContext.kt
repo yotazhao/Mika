@@ -18,6 +18,7 @@
 package com.wangzan101.mika.cap.phone.shell
 
 import android.annotation.SuppressLint
+import android.annotation.TargetApi
 import android.app.Application
 import android.app.Instrumentation
 import android.content.AttributionSource
@@ -33,6 +34,8 @@ import android.os.Build
 internal class ShellContext private constructor(base: Context) : ContextWrapper(base) {
     override fun getPackageName(): String = SHELL_PACKAGE
     override fun getOpPackageName(): String = SHELL_PACKAGE
+    // 内置助手只在安卓 13 起启动;这个方法从安卓 12 才有,系统在更早的版本上不会调用它。
+    @TargetApi(Build.VERSION_CODES.S)
     override fun getAttributionSource(): AttributionSource =
         AttributionSource.Builder(SHELL_UID).setPackageName(SHELL_PACKAGE).build()
     override fun getApplicationContext(): Context = this

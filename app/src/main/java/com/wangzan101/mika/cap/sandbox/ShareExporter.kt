@@ -5,6 +5,7 @@ import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
 import android.webkit.MimeTypeMap
@@ -80,7 +81,10 @@ class ShareExporter(private val context: Context) {
             putString(ContentResolver.QUERY_ARG_SQL_SELECTION,
                 "${MediaStore.MediaColumns.IS_PENDING} = 1 AND ${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ? AND ${MediaStore.MediaColumns.OWNER_PACKAGE_NAME} = ?")
             putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, arrayOf("${android.os.Environment.DIRECTORY_DOWNLOADS}/Mika/%", context.packageName))
-            putInt(MediaStore.QUERY_ARG_MATCH_PENDING, MediaStore.MATCH_INCLUDE)
+            // 安卓 11 起查询默认排除 IS_PENDING 的条目;安卓 10 没有这个参数,带 IS_PENDING=1 的条件就能查到。
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                putInt(MediaStore.QUERY_ARG_MATCH_PENDING, MediaStore.MATCH_INCLUDE)
+            }
         }
         val ids = resolver.query(MediaStore.Downloads.EXTERNAL_CONTENT_URI, arrayOf(MediaStore.MediaColumns._ID), args, null)?.use { c ->
             buildList { while (c.moveToNext()) add(c.getLong(0)) }

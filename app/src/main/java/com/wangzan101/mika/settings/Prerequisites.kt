@@ -41,7 +41,7 @@ fun SystemStatus.notificationOverview() = NotificationOverview.of(
 )
 
 sealed interface Problem {
-    /** 安卓 13 以下没有 Mika 需要的虚拟屏能力。 */
+    /** 安卓 13 以下没有操作其他 App 用的虚拟屏和内置助手。不挡住网页、沙箱和聊天。 */
     data object SystemTooOld : Problem
     /** 内置助手没在运行(没设置、无线调试关着、正在连、出错)。 */
     data class PhoneHelper(val status: BuiltinShellStatus) : Problem
@@ -70,7 +70,8 @@ object Prerequisites {
         val phoneReady: Boolean get() = problems.none(::phoneOnly)
     }
 
-    private fun phoneOnly(p: Problem) = p is Problem.PhoneHelper || p is Problem.Accessibility
+    private fun phoneOnly(p: Problem) =
+        p is Problem.PhoneHelper || p is Problem.Accessibility || p == Problem.SystemTooOld
 
     fun check(status: SystemStatus, hasMainModel: Boolean): Check = Check(
         buildList {

@@ -619,10 +619,14 @@ class TaskService : Service() {
         // 回复内容要由系统填进 Intent,只能用可变的 PendingIntent(Intent 是显式的)
         val pi = PendingIntent.getService(
             this, 6 + SLOT_STRIDE * run.slot, Intent(this, TaskService::class.java).setAction(ACTION_ANSWER).putExtra(EXTRA_RUN, run.key),
-            PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            pendingIntentMutable() or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         return Notification.Action.Builder(null, getString(R.string.action_reply), pi).addRemoteInput(input).build()
     }
+
+    /** 安卓 12 起 RemoteInput 要可变的 PendingIntent;更早的系统默认可变,这个标志还不存在。 */
+    private fun pendingIntentMutable(): Int =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
 
     private fun answerAction(run: TaskRun, option: String, index: Int): Notification.Action {
         val pi = PendingIntent.getService(
