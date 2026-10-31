@@ -8,6 +8,7 @@ import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.content.pm.ProviderInfo
 import android.os.Binder
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.HandlerThread
@@ -118,6 +119,11 @@ object HelperProcess {
                     return Outcome.Rejected
                 }
                 val provider = holder.javaClass.getField("provider").get(holder)!!
+                // ContentProvider.call(AttributionSource, ...) 从安卓 12 才有。助手进程只在安卓 13 起启动。
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+                    Log.w(TAG, "handoff needs Android 12+")
+                    return Outcome.Failed
+                }
                 val extras = Bundle().apply {
                     putString(HelperHandoff.KEY_NONCE, n)
                     putBinder(HelperHandoff.KEY_BINDER, service)

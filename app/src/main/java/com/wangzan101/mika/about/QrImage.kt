@@ -2,6 +2,7 @@ package com.wangzan101.mika.about
 
 import android.content.ContentValues
 import android.content.Context
+import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import com.wangzan101.mika.R
@@ -12,21 +13,25 @@ object QrImage {
     private const val FILE_NAME = "mika-author-wechat.jpg"
 
     /**
-     * 存进相册的 Pictures/Mika。经 MediaStore 写自己新建的图片不要存储权限(安卓 10 起如此,Mika 最低支持安卓 11)。
-     * 写完前标成待定,别的 App 看不到半张图;失败时删掉那一条。
+     * 存进相册的 Pictures/Mika。安卓 10 起经 MediaStore 写自己新建的图片不要存储权限;
+     * 安卓 9 没有 RELATIVE_PATH / IS_PENDING,直接插入图片库(需要存储权限)。失败时删掉那一条。
      */
     fun saveToPictures(context: Context): Boolean {
         val resolver = context.contentResolver
         val values = ContentValues().apply {
             put(MediaStore.Images.Media.DISPLAY_NAME, FILE_NAME)
             put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
-            put(MediaStore.Images.Media.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/Mika")
-            put(MediaStore.Images.Media.IS_PENDING, 1)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                put(MediaStore.Images.Media.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/Mika")
+                put(MediaStore.Images.Media.IS_PENDING, 1)
+            }
         }
         val uri = runCatching { resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values) }.getOrNull() ?: return false
         return runCatching {
             resolver.openOutputStream(uri)!!.use { out -> context.resources.openRawResource(RES).use { it.copyTo(out) } }
-            resolver.update(uri, ContentValues().apply { put(MediaStore.Images.Media.IS_PENDING, 0) }, null, null)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                resolver.update(uri, ContentValues().apply { put(MediaStore.Images.Media.IS_PENDING, 0) }, null, null)
+            }
             true
         }.getOrElse {
             runCatching { resolver.delete(uri, null, null) }

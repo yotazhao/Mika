@@ -54,8 +54,8 @@ Success: **exactly one** device is listed, with state `device`.
 adb shell getprop ro.build.version.sdk
 ```
 
-- Below 30 (older than Android 11): Mika cannot be installed. Tell the user the system is too old and stop.
-- 30 to 32 (Android 11 and 12): Mika installs, but cannot operate apps (the background screen needs Android 13). Only web, files and chat work. Tell the user and ask whether to continue.
+- Below 28 (older than Android 9): Mika cannot be installed. Tell the user the system is too old and stop.
+- 28 to 32 (Android 9 through 12. HarmonyOS 2.0 on the Y9 2019 is usually Android 9): Mika installs, but cannot operate other apps (the background screen needs Android 13). Web, files and chat work. Tell the user and ask whether to continue.
 - 33 or higher (Android 13+): tasks work. 34 or higher (Android 14+) is best.
 
 ### 1.4 CPU architecture

@@ -112,7 +112,11 @@ object PairingNotifier {
     fun ensureChannel(context: Context): ChannelPlan {
         val nm = context.getSystemService(NotificationManager::class.java)
         val existing = PairingChannel.IDS.mapNotNull { id ->
-            nm.getNotificationChannel(id)?.let { ChannelSnapshot(id, it.importance, it.hasUserSetImportance()) }
+            nm.getNotificationChannel(id)?.let {
+                // 分不出是不是用户自己改的从安卓 10 才有。更早的系统不重建已有频道,免得盖掉用户的设置。
+                val userSet = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) it.hasUserSetImportance() else true
+                ChannelSnapshot(id, it.importance, userSet)
+            }
         }
         val plan = PairingChannel.plan(existing)
         if (plan is ChannelPlan.Create) {
@@ -147,7 +151,7 @@ object PairingNotifier {
                 val reply = PendingIntent.getBroadcast(
                     context, 1,
                     Intent(context, PairingCodeReceiver::class.java).apply { notice.port?.let { putExtra(EXTRA_PORT, it) } },
-                    PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+                    pendingIntentMutable() or PendingIntent.FLAG_UPDATE_CURRENT,
                 )
                 val action = Notification.Action.Builder(null, PhoneSetupCopy.NOTIFY_ACTION, reply)
                     .addRemoteInput(input)
@@ -179,4 +183,8 @@ object PairingNotifier {
     fun cancel(context: Context) {
         context.getSystemService(NotificationManager::class.java).cancel(ID)
     }
+
+    /** 安卓 12 起 RemoteInput 要可变的 PendingIntent;更早的系统默认可变,这个标志还不存在。 */
+    private fun pendingIntentMutable(): Int =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
 }

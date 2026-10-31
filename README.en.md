@@ -161,8 +161,8 @@ Apps and websites that already have usage knowledge (names as they appear in the
 
 | Item | Requirement |
 |---|---|
-| Install | Android 11 or later |
-| Run tasks | Android 13 or later (required by the background screen and the built-in phone helper) |
+| Install | Android 9 or later (including HarmonyOS 2.0 when it is Android 9 underneath) |
+| Operate other apps | Android 13 or later (required by the background screen and the built-in phone helper). Web, files and chat work from Android 9 |
 | Recommended | Android 14 or later: the background screen has its own focus, so it does not interfere with your typing on the main screen; running tasks from different conversations at the same time also needs it |
 | Linux sandbox | arm64 devices only; on other devices the app installs normally and the sandbox shows "not supported on this device" |
 | Model | An API key for an LLM that supports tool calling |
@@ -249,7 +249,7 @@ The system sometimes stops accessibility services (e.g. after the process is cle
 Some screens (e.g. payment or password entry) block screenshots, so Mika cannot see them and will not try to read text on them. You need to take over on those screens and hand back to Mika when done.
 
 **Why Android 13?**
-Mika operates apps on a separate background screen, and the built-in phone helper and that screen need Android 13 or later. From Android 14 the background screen has its own focus and does not interfere with your typing on the main screen, so it is recommended. Web, sandbox and chat also work on Android 11 and 12.
+Mika operates apps on a separate background screen, and the built-in phone helper and that screen need Android 13 or later. From Android 14 the background screen has its own focus and does not interfere with your typing on the main screen, so it is recommended. Web, sandbox and chat also work on Android 9 through 12.
 
 **Can I use a model running on my own computer or LAN?**
 Yes. When adding a provider choose "Custom" (自定义); the base URL may start with `http://`, e.g. `http://192.168.1.10:11434/v1` (with the phone on the same Wi-Fi). Local and LAN addresses show no warning; an unencrypted address outside your LAN shows a short warning, since your API key and chats could be seen by others on the network. Use `https://` when you can.

@@ -236,7 +236,7 @@ internal object ScreenReader {
         if (!n.isEnabled) add(UiStates.DISABLED)
     }
 
-    // isChecked 在 API 36 起被三态的 checked 取代;minSdk 30 仍需用它
+    // isChecked 在 API 36 起被三态的 checked 取代;minSdk 29 仍需用它
     @Suppress("DEPRECATION")
     private fun states(n: AccessibilityNodeInfo) =
         "${n.isChecked}${n.isSelected}${n.isEnabled}${n.isFocused}${n.textSelectionStart}:${n.textSelectionEnd}"

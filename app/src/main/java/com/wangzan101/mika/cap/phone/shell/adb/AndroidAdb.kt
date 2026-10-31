@@ -23,6 +23,8 @@ object AndroidAdb {
 
     // 设备端导出时不带 context;TLS 1.3 里空 context 与不带 context 的结果相同(RFC 8446 §7.5)
     val exporter = KeyingMaterialExporter { socket, label, length ->
+        // 导出 TLS 密钥材料从安卓 12 才有。无线调试配对的助手只在安卓 13 起启动。
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) throw SSLException("keying material export needs Android 12")
         SSLSockets.exportKeyingMaterial(socket, label, ByteArray(0), length) ?: throw SSLException("keying material export failed")
     }
 

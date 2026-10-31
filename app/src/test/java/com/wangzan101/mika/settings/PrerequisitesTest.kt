@@ -23,10 +23,12 @@ class PrerequisitesTest {
     }
 
     @Test
-    fun belowApi33BlocksStart() {
+    fun belowApi33StillStartsWebAndSandbox() {
         val c = Prerequisites.check(ready.copy(sdkInt = 32), hasMainModel = true)
-        assertFalse(c.canStartTask)
-        assertEquals(listOf(Problem.SystemTooOld), c.blockers)
+        assertTrue(c.canStartTask)
+        assertFalse(c.phoneReady)
+        assertTrue(c.blockers.isEmpty())
+        assertEquals(listOf(Problem.SystemTooOld), c.problems)
     }
 
     @Test

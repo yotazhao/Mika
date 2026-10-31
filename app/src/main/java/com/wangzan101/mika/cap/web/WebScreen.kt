@@ -1,7 +1,9 @@
 package com.wangzan101.mika.cap.web
 
+import android.os.Build
 import android.util.Log
 import android.view.KeyEvent
+import android.view.View
 import com.wangzan101.mika.core.cap.web.cdp.CdpGeometry
 import com.wangzan101.mika.core.uistate.CdpKeys
 import com.wangzan101.mika.core.cap.web.cdp.CdpSession
@@ -458,7 +460,7 @@ class WebScreen(
         val tab = (ready() as? Ready.Tab)?.tab ?: return false
         val shown = withContext(Dispatchers.Main) {
             val v = tab.view
-            val ime = v.rootWindowInsets?.isVisible(android.view.WindowInsets.Type.ime()) == true
+            val ime = imeOpen(v)
             v.isAttachedToWindow && v.isShown && v.windowVisibility == android.view.View.VISIBLE && !ime
         }
         if (!shown) return false
@@ -1387,5 +1389,16 @@ class WebScreen(
 
         private val BLANK = Regex("[\\s\\u200B\\u200C\\u200D\\uFEFF]+")
         fun collapse(s: String) = s.replace(BLANK, " ").trim()
+    }
+}
+
+/** 输入法是否开着。安卓 11 起能直接问;安卓 10 用系统栏和稳定区的高度差判断。 */
+private fun imeOpen(v: View): Boolean {
+    val insets = v.rootWindowInsets ?: return false
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        insets.isVisible(android.view.WindowInsets.Type.ime())
+    } else {
+        @Suppress("DEPRECATION")
+        insets.systemWindowInsetBottom > insets.stableInsetBottom
     }
 }

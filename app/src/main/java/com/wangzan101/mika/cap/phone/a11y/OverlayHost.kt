@@ -4,6 +4,8 @@ import com.wangzan101.mika.i18n.AppLanguage
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.PixelFormat
+import android.os.Build
+import android.util.DisplayMetrics
 import android.util.Log
 import android.view.Choreographer
 import android.view.MotionEvent
@@ -92,9 +94,14 @@ class OverlayHost internal constructor(private val service: ScreenAccessibility)
                 WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT,
         ).apply {
-            // 按整块屏幕摆,不让系统再把窗口挤进状态栏、导航栏以内:要避开哪里由调用方按 area() 定
-            fitInsetsTypes = 0
-            layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+            // 按整块屏幕摆,不让系统再把窗口挤进状态栏、导航栏以内:要避开哪里由调用方按 area() 定。
+            // fitInsetsTypes 和 ALWAYS 从安卓 11 才有;安卓 10 用短边切入刘海,效果接近。
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                fitInsetsTypes = 0
+                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+            } else {
+                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
             place(placement)
         }
         val window = OverlayWindow(this, frame, params, owners)
@@ -112,14 +119,35 @@ class OverlayHost internal constructor(private val service: ScreenAccessibility)
     }
 
     /** 此刻屏幕的大小和四边被系统栏、刘海占掉的部分(转屏后跟着变)。读不到时退回显示尺寸,上下各留一条状态栏常见的高度。 */
-    fun area(): OverlayArea = runCatching {
-        val m = wm().currentWindowMetrics
-        val i = m.windowInsets.getInsetsIgnoringVisibility(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
-        OverlayArea(m.bounds.width(), m.bounds.height(), i.left, i.top, i.right, i.bottom)
-    }.getOrElse {
-        val d = service.resources.displayMetrics
-        val bar = (FALLBACK_INSET_DP * d.density).toInt()
-        OverlayArea(d.widthPixels, d.heightPixels, insetTop = bar, insetBottom = bar)
+    fun area(): OverlayArea = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        runCatching {
+            val m = wm().currentWindowMetrics
+            val i = m.windowInsets.getInsetsIgnoringVisibility(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
+            OverlayArea(m.bounds.width(), m.bounds.height(), i.left, i.top, i.right, i.bottom)
+        }.getOrElse { legacyArea() }
+    } else {
+        legacyArea()
+    }
+
+    /** 安卓 10 没有 WindowMetrics。用真实屏幕尺寸,再加上刘海安全区和状态栏、导航栏的高度。 */
+    @Suppress("DEPRECATION")
+    private fun legacyArea(): OverlayArea {
+        val display = wm().defaultDisplay
+        val metrics = DisplayMetrics().also(display::getRealMetrics)
+        // Display.getCutout 从安卓 10 才有。安卓 9 只按状态栏、导航栏高度让开。
+        val cutout = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) display.cutout else null
+        val fallback = (FALLBACK_INSET_DP * service.resources.displayMetrics.density).toInt()
+        val top = maxOf(cutout?.safeInsetTop ?: 0, systemBarPx("status_bar_height", fallback))
+        val bottom = maxOf(cutout?.safeInsetBottom ?: 0, systemBarPx("navigation_bar_height", fallback))
+        return OverlayArea(
+            metrics.widthPixels, metrics.heightPixels,
+            cutout?.safeInsetLeft ?: 0, top, cutout?.safeInsetRight ?: 0, bottom,
+        )
+    }
+
+    private fun systemBarPx(name: String, fallback: Int): Int {
+        val id = service.resources.getIdentifier(name, "dimen", "android")
+        return if (id > 0) service.resources.getDimensionPixelSize(id) else fallback
     }
 
     /**
@@ -226,7 +254,13 @@ class OverlayWindow internal constructor(
         try {
             withTimeoutOrNull(GONE_WAIT_MS) {
                 suspendCancellableCoroutine { cont ->
-                    frame.viewTreeObserver.registerFrameCommitCallback { if (cont.isActive) cont.resume(Unit) }
+                    val done = { if (cont.isActive) cont.resume(Unit) }
+                    // 等这一帧真正画完从安卓 10 才有;安卓 9 等到下一帧开始,再多等下面那几帧。
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        frame.viewTreeObserver.registerFrameCommitCallback(done)
+                    } else {
+                        Choreographer.getInstance().postFrameCallback { done() }
+                    }
                     frame.invalidate()
                 }
             }

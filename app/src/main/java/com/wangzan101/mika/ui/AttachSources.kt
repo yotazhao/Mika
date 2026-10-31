@@ -132,7 +132,11 @@ object RecentPhotos {
 
     /** 最近加进媒体库的照片,新的在前;读不到(没权限)为空。 */
     suspend fun query(context: Context, limit: Int = 120): List<PendingAttachment> = withContext(Dispatchers.IO) {
-        val base = MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
+        val base = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
+        } else {
+            MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+        }
         val args = Bundle().apply {
             putStringArray(ContentResolver.QUERY_ARG_SORT_COLUMNS, arrayOf(MediaStore.Images.Media.DATE_ADDED))
             putInt(ContentResolver.QUERY_ARG_SORT_DIRECTION, ContentResolver.QUERY_SORT_DIRECTION_DESCENDING)
@@ -178,7 +182,11 @@ private class StoredAttachImages(private val context: Context) : AttachImages {
         cache.get(key)?.let { return@withContext it }
         val bmp = runCatching {
             when (image) {
-                is AttachImage.Picked -> context.contentResolver.loadThumbnail(Uri.parse(image.uri), Size(px, px), null).asImageBitmap()
+                is AttachImage.Picked -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    context.contentResolver.loadThumbnail(Uri.parse(image.uri), Size(px, px), null).asImageBitmap()
+                } else {
+                    context.contentResolver.openInputStream(Uri.parse(image.uri))?.use { it.readBytes() }?.let { decodeSmall(it, px) }
+                }
                 is AttachImage.Sent -> sentBytes(image)?.let { decodeSmall(it, px) }
             }
         }.getOrNull()
